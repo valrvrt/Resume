@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useAnimationFrame } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronDown, Mail, User, MapPin } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa6";
 import Image from "next/image";
@@ -8,173 +8,23 @@ import { useState, useRef, useEffect } from "react";
 import { HoverButton } from "@/components/ui/hover-button";
 import { useLanguage } from "@/context/LanguageContext";
 
-// Calculate 3D position on a tilted orbit
 function calculate3DPosition(
   angle: number,
   orbitRadius: number,
   tiltX: number,
   rotationZ: number,
 ) {
-  // Position on a flat circle
   const flatX = orbitRadius * Math.cos(angle);
   const flatY = orbitRadius * Math.sin(angle);
-
-  // Apply tilt around X axis (makes it elliptical when viewed)
   const tiltXRad = (tiltX * Math.PI) / 180;
   const tiltedY = flatY * Math.cos(tiltXRad);
   const tiltedZ = flatY * Math.sin(tiltXRad);
-
-  // Apply rotation around Z axis (rotates the whole orbit)
   const rotZRad = (rotationZ * Math.PI) / 180;
   const finalX = flatX * Math.cos(rotZRad) - tiltedY * Math.sin(rotZRad);
   const finalY = flatX * Math.sin(rotZRad) + tiltedY * Math.cos(rotZRad);
-  const finalZ = tiltedZ;
-
-  return { x: finalX, y: finalY, z: finalZ };
+  return { x: finalX, y: finalY, z: tiltedZ };
 }
 
-// Trail point interface
-interface TrailPoint {
-  x: number;
-  y: number;
-  z: number;
-  age: number;
-}
-
-// Electron component with smooth fading trail using SVG line
-function ElectronWithTrail({
-  orbitRadius,
-  duration,
-  startAngle,
-  tiltX,
-  rotationZ,
-  color,
-  resetKey,
-}: {
-  orbitRadius: number;
-  duration: number;
-  startAngle: number;
-  tiltX: number;
-  rotationZ: number;
-  color: string;
-  resetKey: number;
-}) {
-  const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
-  const [trail, setTrail] = useState<TrailPoint[]>([]);
-  const lastTimeRef = useRef(0);
-  const startTimeRef = useRef<number | null>(null);
-  const trailLength = 50; // More points for smoother trail
-  const trailUpdateInterval = 9; // Faster updates for smoothness
-
-  useAnimationFrame((time) => {
-    // Reset animation when resetKey changes
-    if (startTimeRef.current === null) {
-      startTimeRef.current = time;
-      setTrail([]);
-    }
-
-    const elapsed = time - startTimeRef.current;
-    const angularSpeed = (2 * Math.PI) / (duration * 1000);
-    const angle = startAngle + elapsed * angularSpeed;
-    const pos = calculate3DPosition(angle, orbitRadius, tiltX, rotationZ);
-    setPosition(pos);
-
-    // Update trail at intervals
-    if (time - lastTimeRef.current > trailUpdateInterval) {
-      lastTimeRef.current = time;
-      setTrail((prev) => {
-        const newTrail = [
-          { ...pos, age: 0 },
-          ...prev.map((p) => ({ ...p, age: p.age + 1 })),
-        ];
-        return newTrail.slice(0, trailLength);
-      });
-    }
-  });
-
-  // Reset when resetKey changes
-  useEffect(() => {
-    startTimeRef.current = null;
-    setTrail([]);
-  }, [resetKey]);
-
-  const isBehind = position.z < 0;
-  const scale = 0.8 + ((position.z + orbitRadius) / (orbitRadius * 2)) * 0.4;
-
-  // Split trail into front and back segments for proper z-ordering
-  const frontTrail = trail.filter((p) => p.z >= 0);
-  const backTrail = trail.filter((p) => p.z < 0);
-
-  // Render trail as individual segments that fade and get thinner
-  const renderTrailSegments = (points: TrailPoint[], isFront: boolean) => {
-    if (points.length < 2) return null;
-
-    const segments = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-
-      // Calculate fade based on age (older = more faded and thinner)
-      const avgAge = (p1.age + p2.age) / 2;
-      const fadeFactor = Math.max(0, 1 - avgAge / trailLength);
-      const baseOpacity = isFront ? 0.9 : 0.35;
-      const segmentOpacity = baseOpacity * fadeFactor * fadeFactor; // Quadratic fade for smoother effect
-      const strokeWidth = Math.max(0.5, 4 * fadeFactor); // Thicker near electron, thinner at end
-
-      if (segmentOpacity < 0.02) continue;
-
-      segments.push(
-        <line
-          key={i}
-          x1={p1.x + 185}
-          y1={p1.y + 185}
-          x2={p2.x + 185}
-          y2={p2.y + 185}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeOpacity={segmentOpacity}
-          strokeLinecap="round"
-        />,
-      );
-    }
-
-    return (
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        style={{ zIndex: isFront ? 23 : 3 }}
-        viewBox="0 0 370 370"
-        key={`trail-${isFront ? "front" : "back"}-${resetKey}`}
-      >
-        {segments}
-      </svg>
-    );
-  };
-
-  return (
-    <>
-      {/* Trail paths */}
-      {renderTrailSegments(backTrail, false)}
-      {renderTrailSegments(frontTrail, true)}
-
-      {/* Electron */}
-      <div
-        className="absolute rounded-full"
-        style={{
-          width: 12 * scale,
-          height: 12 * scale,
-          backgroundColor: color,
-          left: "50%",
-          top: "50%",
-          transform: `translate(${position.x - (12 * scale) / 2}px, ${position.y - (12 * scale) / 2}px)`,
-          zIndex: isBehind ? 5 : 25,
-          boxShadow: `0 0 ${6 * scale}px ${color}, 0 0 ${12 * scale}px ${color}80`,
-        }}
-      />
-    </>
-  );
-}
-
-// Available colors from palette (excluding greens that match the nucleus background)
 const electronColors = [
   "#bc6c25",
   "#dda15e",
@@ -184,31 +34,156 @@ const electronColors = [
   "#188157",
 ];
 
-// Generate random orbits
-function generateOrbits(count: number) {
-  const orbits = [];
+interface OrbitConfig {
+  orbitRadius: number;
+  duration: number;
+  startAngle: number;
+  tiltX: number;
+  rotationZ: number;
+  color: string;
+}
+
+function generateOrbits(count: number): OrbitConfig[] {
+  const orbits: OrbitConfig[] = [];
   for (let i = 0; i < count; i++) {
     orbits.push({
-      orbitRadius: 160, // Larger orbit radius
-      duration: 3.5 + Math.random() * 2, // 3.5-5.5 seconds
+      orbitRadius: 160,
+      duration: 3.5 + Math.random() * 2,
       startAngle: (i / count) * 2 * Math.PI + Math.random() * 0.5,
-      tiltX: 65 + Math.random() * 15, // 65-80 degrees
-      rotationZ: (i / count) * 180 + Math.random() * 30, // Spread evenly with some randomness
+      tiltX: 65 + Math.random() * 15,
+      rotationZ: (i / count) * 180 + Math.random() * 30,
       color: electronColors[i % electronColors.length],
     });
   }
   return orbits;
 }
 
-// Atom model with nucleus (profile) and orbiting electrons with trails
+const TRAIL_LENGTH = 50;
+const CANVAS_SIZE = 370;
+
+type TrailPoint = { x: number; y: number; z: number; age: number };
+
+// Renders the atom on two stacked canvases (back + front) so electrons
+// properly pass behind and in front of the nucleus without any React
+// re-renders during animation — all drawing goes straight to canvas.
 function AtomModel({ children }: { children: React.ReactNode }) {
-  const [resetKey, setResetKey] = useState(0);
-  const [orbits, setOrbits] = useState(() => generateOrbits(3));
+  const backCanvasRef = useRef<HTMLCanvasElement>(null);
+  const frontCanvasRef = useRef<HTMLCanvasElement>(null);
+  const orbitsRef = useRef<OrbitConfig[]>([]);
+  const startTimeRef = useRef<number | null>(null);
+  const trailsRef = useRef<TrailPoint[][]>([]);
+  const animIdRef = useRef<number>(0);
+  const [orbits, setOrbits] = useState<OrbitConfig[]>(() => generateOrbits(3));
+
+  // Sync new orbits into refs so the running animation loop picks them up
+  useEffect(() => {
+    orbitsRef.current = orbits;
+    startTimeRef.current = null;
+    trailsRef.current = orbits.map(() => []);
+  }, [orbits]);
+
+  // Single animation loop — runs for the lifetime of the component
+  useEffect(() => {
+    const backCanvas = backCanvasRef.current;
+    const frontCanvas = frontCanvasRef.current;
+    if (!backCanvas || !frontCanvas) return;
+
+    // Scale canvas for high-DPI screens so it looks sharp on phones
+    const dpr = window.devicePixelRatio || 1;
+    [backCanvas, frontCanvas].forEach((c) => {
+      c.width = CANVAS_SIZE * dpr;
+      c.height = CANVAS_SIZE * dpr;
+      c.style.width = `${CANVAS_SIZE}px`;
+      c.style.height = `${CANVAS_SIZE}px`;
+    });
+
+    const backCtx = backCanvas.getContext("2d")!;
+    const frontCtx = frontCanvas.getContext("2d")!;
+    backCtx.scale(dpr, dpr);
+    frontCtx.scale(dpr, dpr);
+    backCtx.lineCap = "round";
+    frontCtx.lineCap = "round";
+
+    const cx = CANVAS_SIZE / 2;
+    const cy = CANVAS_SIZE / 2;
+
+    function draw(time: number) {
+      if (startTimeRef.current === null) {
+        startTimeRef.current = time;
+        trailsRef.current = orbitsRef.current.map(() => []);
+      }
+
+      const elapsed = time - startTimeRef.current;
+
+      backCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+      frontCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+      orbitsRef.current.forEach((orbit, i) => {
+        const angularSpeed = (2 * Math.PI) / (orbit.duration * 1000);
+        const angle = orbit.startAngle + elapsed * angularSpeed;
+        const pos = calculate3DPosition(
+          angle,
+          orbit.orbitRadius,
+          orbit.tiltX,
+          orbit.rotationZ,
+        );
+
+        // Advance trail
+        if (!trailsRef.current[i]) trailsRef.current[i] = [];
+        const trail = trailsRef.current[i];
+        trail.unshift({ ...pos, age: 0 });
+        for (let j = 1; j < trail.length; j++) trail[j].age++;
+        if (trail.length > TRAIL_LENGTH) trail.pop();
+
+        const isBehind = pos.z < 0;
+        const scale =
+          0.8 + ((pos.z + orbit.orbitRadius) / (orbit.orbitRadius * 2)) * 0.4;
+
+        // Draw trail segments onto the correct canvas layer
+        for (let j = 0; j < trail.length - 1; j++) {
+          const p1 = trail[j];
+          const p2 = trail[j + 1];
+          const segBehind = (p1.z + p2.z) / 2 < 0;
+          const ctx = segBehind ? backCtx : frontCtx;
+          const avgAge = (p1.age + p2.age) / 2;
+          const fade = Math.max(0, 1 - avgAge / TRAIL_LENGTH);
+          const opacity = (segBehind ? 0.35 : 0.9) * fade * fade;
+          if (opacity < 0.02) continue;
+
+          ctx.beginPath();
+          ctx.moveTo(cx + p1.x, cy + p1.y);
+          ctx.lineTo(cx + p2.x, cy + p2.y);
+          ctx.strokeStyle = orbit.color;
+          ctx.globalAlpha = opacity;
+          ctx.lineWidth = Math.max(0.5, 4 * fade);
+          ctx.stroke();
+        }
+
+        // Draw electron dot with glow
+        const eCtx = isBehind ? backCtx : frontCtx;
+        eCtx.globalAlpha = 1;
+        eCtx.shadowBlur = 12 * scale;
+        eCtx.shadowColor = orbit.color;
+        eCtx.beginPath();
+        eCtx.arc(cx + pos.x, cy + pos.y, 6 * scale, 0, Math.PI * 2);
+        eCtx.fillStyle = orbit.color;
+        eCtx.fill();
+        eCtx.shadowBlur = 0;
+      });
+
+      backCtx.globalAlpha = 1;
+      frontCtx.globalAlpha = 1;
+
+      animIdRef.current = requestAnimationFrame(draw);
+    }
+
+    animIdRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animIdRef.current);
+  }, []); // intentionally empty — loop runs once and reads from refs
 
   const handleClick = () => {
-    const newCount = Math.floor(Math.random() * 6) + 2; // 2-7 electrons
+    const newCount = Math.floor(Math.random() * 6) + 2;
     setOrbits(generateOrbits(newCount));
-    setResetKey((k) => k + 1);
   };
 
   return (
@@ -216,7 +191,6 @@ function AtomModel({ children }: { children: React.ReactNode }) {
       className="relative w-[370px] h-[370px] mx-auto flex items-center justify-center cursor-pointer group"
       onClick={handleClick}
     >
-      {/* Click hint - appears on hover */}
       <motion.div
         initial={{ opacity: 0 }}
         className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-black-forest/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap z-30"
@@ -224,16 +198,14 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         Click to randomize
       </motion.div>
 
-      {/* Electrons with trails */}
-      {orbits.map((orbit, index) => (
-        <ElectronWithTrail
-          key={`electron-${index}-${resetKey}`}
-          {...orbit}
-          resetKey={resetKey}
-        />
-      ))}
+      {/* Electrons behind the nucleus */}
+      <canvas
+        ref={backCanvasRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{ zIndex: 3 }}
+      />
 
-      {/* Nucleus glow effect */}
+      {/* Nucleus glow */}
       <motion.div
         className="absolute w-40 h-40 sm:w-44 sm:h-44 rounded-full"
         style={{
@@ -241,24 +213,21 @@ function AtomModel({ children }: { children: React.ReactNode }) {
             "radial-gradient(circle, rgba(96,108,56,0.15) 0%, rgba(96,108,56,0) 70%)",
           zIndex: 10,
         }}
-        animate={{
-          scale: [1, 1.05, 1],
-          opacity: [0.3, 0.5, 0.3],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
+        animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* Nucleus (Profile image) */}
-      <div
-        className="relative w-36 h-36 sm:w-40 sm:h-40"
-        style={{ zIndex: 15 }}
-      >
+      {/* Nucleus (profile image) */}
+      <div className="relative w-36 h-36 sm:w-40 sm:h-40" style={{ zIndex: 15 }}>
         {children}
       </div>
+
+      {/* Electrons in front of the nucleus */}
+      <canvas
+        ref={frontCanvasRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{ zIndex: 23 }}
+      />
     </div>
   );
 }
@@ -301,8 +270,18 @@ export default function Hero() {
           transition={{
             scale: { duration: 1.5, ease: "easeOut", delay: 0.2 },
             opacity: { duration: 1.5, ease: "easeOut", delay: 0.2 },
-            x: { duration: 22, repeat: Infinity, ease: "easeInOut", delay: 0.2 },
-            y: { duration: 18, repeat: Infinity, ease: "easeInOut", delay: 0.2 },
+            x: {
+              duration: 22,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 0.2,
+            },
+            y: {
+              duration: 18,
+              repeat: Infinity,
+              ease: "easeInOut",
+              delay: 0.2,
+            },
           }}
           className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-sunlit-clay rounded-full blur-3xl"
         />
@@ -405,12 +384,16 @@ export default function Hero() {
           </HoverButton>
         </motion.div>
 
-        {/* Scroll indicator - fades out after 5 seconds */}
+        {/* Scroll indicator */}
         <motion.a
           href="#about"
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 1, 1, 1, 1, 0] }}
-          transition={{ duration: 6, delay: 0.8, times: [0, 0.1, 0.5, 0.7, 0.85, 1] }}
+          transition={{
+            duration: 6,
+            delay: 0.8,
+            times: [0, 0.1, 0.5, 0.7, 0.85, 1],
+          }}
           className="inline-block cursor-pointer"
           aria-label="Scroll to About section"
         >

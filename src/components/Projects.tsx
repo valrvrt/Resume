@@ -61,6 +61,7 @@ function ProjectCard({
   project,
   index,
   categoryLabel,
+  isVisible,
 }: {
   project: {
     readonly title: string;
@@ -70,9 +71,8 @@ function ProjectCard({
   };
   index: number;
   categoryLabel: string;
+  isVisible: boolean;
 }) {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-50px" });
   const Icon = getProjectIcon(project.title);
   const categoryColor =
     categoryColors[project.category as keyof typeof categoryColors] ||
@@ -80,9 +80,8 @@ function ProjectCard({
 
   return (
     <motion.div
-      ref={ref}
       initial={{ opacity: 0, y: 30 }}
-      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+      animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
       transition={{ duration: 0.5, delay: index * 0.05 }}
       className="bg-cornsilk rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col"
     >
@@ -195,6 +194,7 @@ export default function Projects() {
               project={project}
               index={index}
               categoryLabel={getCategoryLabel(project.category)}
+              isVisible={isInView}
             />
           ))}
         </div>

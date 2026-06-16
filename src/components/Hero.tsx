@@ -4,7 +4,7 @@ import { motion, useAnimationFrame } from "framer-motion";
 import { ChevronDown, Mail, User, MapPin } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa6";
 import Image from "next/image";
-import { useState, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import { HoverButton } from "@/components/ui/hover-button";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -13,7 +13,7 @@ function calculate3DPosition(
   angle: number,
   orbitRadius: number,
   tiltX: number,
-  rotationZ: number
+  rotationZ: number,
 ) {
   // Position on a flat circle
   const flatX = orbitRadius * Math.cos(angle);
@@ -33,14 +33,23 @@ function calculate3DPosition(
   return { x: finalX, y: finalY, z: finalZ };
 }
 
-// Electron component with true 3D orbital motion
-function Electron({
+// Trail point interface
+interface TrailPoint {
+  x: number;
+  y: number;
+  z: number;
+  age: number;
+}
+
+// Electron component with smooth fading trail using SVG line
+function ElectronWithTrail({
   orbitRadius,
   duration,
   startAngle,
   tiltX,
   rotationZ,
   color,
+  resetKey,
 }: {
   orbitRadius: number;
   duration: number;
@@ -48,156 +57,181 @@ function Electron({
   tiltX: number;
   rotationZ: number;
   color: string;
+  resetKey: number;
 }) {
   const [position, setPosition] = useState({ x: 0, y: 0, z: 0 });
+  const [trail, setTrail] = useState<TrailPoint[]>([]);
+  const lastTimeRef = useRef(0);
+  const startTimeRef = useRef<number | null>(null);
+  const trailLength = 50; // More points for smoother trail
+  const trailUpdateInterval = 9; // Faster updates for smoothness
 
   useAnimationFrame((time) => {
+    // Reset animation when resetKey changes
+    if (startTimeRef.current === null) {
+      startTimeRef.current = time;
+      setTrail([]);
+    }
+
+    const elapsed = time - startTimeRef.current;
     const angularSpeed = (2 * Math.PI) / (duration * 1000);
-    const angle = startAngle + time * angularSpeed;
+    const angle = startAngle + elapsed * angularSpeed;
     const pos = calculate3DPosition(angle, orbitRadius, tiltX, rotationZ);
     setPosition(pos);
+
+    // Update trail at intervals
+    if (time - lastTimeRef.current > trailUpdateInterval) {
+      lastTimeRef.current = time;
+      setTrail((prev) => {
+        const newTrail = [
+          { ...pos, age: 0 },
+          ...prev.map((p) => ({ ...p, age: p.age + 1 })),
+        ];
+        return newTrail.slice(0, trailLength);
+      });
+    }
   });
 
+  // Reset when resetKey changes
+  useEffect(() => {
+    startTimeRef.current = null;
+    setTrail([]);
+  }, [resetKey]);
+
   const isBehind = position.z < 0;
-  const scale = 0.8 + (position.z + orbitRadius) / (orbitRadius * 2) * 0.4;
-  const opacity = isBehind ? 0.5 : 1;
+  const scale = 0.8 + ((position.z + orbitRadius) / (orbitRadius * 2)) * 0.4;
 
-  return (
-    <div
-      className="absolute rounded-full"
-      style={{
-        width: 14 * scale,
-        height: 14 * scale,
-        backgroundColor: color,
-        left: "50%",
-        top: "50%",
-        transform: `translate(${position.x - (14 * scale) / 2}px, ${position.y - (14 * scale) / 2}px)`,
-        zIndex: isBehind ? 5 : 25,
-        boxShadow: `0 0 ${8 * scale}px ${color}, 0 0 ${16 * scale}px ${color}80`,
-        opacity: opacity,
-      }}
-    />
-  );
-}
+  // Split trail into front and back segments for proper z-ordering
+  const frontTrail = trail.filter((p) => p.z >= 0);
+  const backTrail = trail.filter((p) => p.z < 0);
 
-// Orbit path component - draws the full elliptical path with fading
-function OrbitPath({
-  orbitRadius,
-  tiltX,
-  rotationZ,
-  color,
-  isFront,
-}: {
-  orbitRadius: number;
-  tiltX: number;
-  rotationZ: number;
-  color: string;
-  isFront: boolean;
-}) {
-  const segments = useMemo(() => {
-    const pts: { x: number; y: number; z: number }[] = [];
-    const numPoints = 100;
-    for (let i = 0; i <= numPoints; i++) {
-      const angle = (i / numPoints) * 2 * Math.PI;
-      pts.push(calculate3DPosition(angle, orbitRadius, tiltX, rotationZ));
+  // Render trail as individual segments that fade and get thinner
+  const renderTrailSegments = (points: TrailPoint[], isFront: boolean) => {
+    if (points.length < 2) return null;
+
+    const segments = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+
+      // Calculate fade based on age (older = more faded and thinner)
+      const avgAge = (p1.age + p2.age) / 2;
+      const fadeFactor = Math.max(0, 1 - avgAge / trailLength);
+      const baseOpacity = isFront ? 0.9 : 0.35;
+      const segmentOpacity = baseOpacity * fadeFactor * fadeFactor; // Quadratic fade for smoother effect
+      const strokeWidth = Math.max(0.5, 4 * fadeFactor); // Thicker near electron, thinner at end
+
+      if (segmentOpacity < 0.02) continue;
+
+      segments.push(
+        <line
+          key={i}
+          x1={p1.x + 185}
+          y1={p1.y + 185}
+          x2={p2.x + 185}
+          y2={p2.y + 185}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeOpacity={segmentOpacity}
+          strokeLinecap="round"
+        />,
+      );
     }
 
-    // Split into front and back segments
-    const result: { points: { x: number; y: number }[]; avgZ: number }[] = [];
-    let currentSegment: { x: number; y: number }[] = [];
-    let zSum = 0;
-    let zCount = 0;
-
-    for (let i = 0; i < pts.length; i++) {
-      const pt = pts[i];
-      const isInZone = isFront ? pt.z >= 0 : pt.z < 0;
-
-      if (isInZone) {
-        currentSegment.push({ x: pt.x + 200, y: pt.y + 200 });
-        zSum += pt.z;
-        zCount++;
-      } else if (currentSegment.length > 0) {
-        result.push({ points: [...currentSegment], avgZ: zSum / zCount });
-        currentSegment = [];
-        zSum = 0;
-        zCount = 0;
-      }
-    }
-    if (currentSegment.length > 0) {
-      result.push({ points: currentSegment, avgZ: zSum / zCount });
-    }
-
-    return result;
-  }, [orbitRadius, tiltX, rotationZ, isFront]);
+    return (
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ zIndex: isFront ? 23 : 3 }}
+        viewBox="0 0 370 370"
+        key={`trail-${isFront ? "front" : "back"}-${resetKey}`}
+      >
+        {segments}
+      </svg>
+    );
+  };
 
   return (
     <>
-      {segments.map((seg, idx) => {
-        if (seg.points.length < 2) return null;
-        const pathD = `M ${seg.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+      {/* Trail paths */}
+      {renderTrailSegments(backTrail, false)}
+      {renderTrailSegments(frontTrail, true)}
 
-        // Fade based on z-depth - closer to viewer = more visible
-        const normalizedZ = (seg.avgZ + orbitRadius) / (orbitRadius * 2);
-        const baseOpacity = isFront ? 0.7 : 0.2;
-        const opacity = baseOpacity * (0.4 + normalizedZ * 0.6);
-
-        return (
-          <path
-            key={idx}
-            d={pathD}
-            fill="none"
-            stroke={color}
-            strokeWidth={2}
-            strokeOpacity={opacity}
-            strokeLinecap="round"
-          />
-        );
-      })}
+      {/* Electron */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          width: 12 * scale,
+          height: 12 * scale,
+          backgroundColor: color,
+          left: "50%",
+          top: "50%",
+          transform: `translate(${position.x - (12 * scale) / 2}px, ${position.y - (12 * scale) / 2}px)`,
+          zIndex: isBehind ? 5 : 25,
+          boxShadow: `0 0 ${6 * scale}px ${color}, 0 0 ${12 * scale}px ${color}80`,
+        }}
+      />
     </>
   );
 }
 
-// Atom model with nucleus (profile) and orbiting electrons
+// Available colors from palette (excluding greens that match the nucleus background)
+const electronColors = [
+  "#bc6c25",
+  "#dda15e",
+  "#a35d2b",
+  "#165d37",
+  "#248748",
+  "#188157",
+];
+
+// Generate random orbits
+function generateOrbits(count: number) {
+  const orbits = [];
+  for (let i = 0; i < count; i++) {
+    orbits.push({
+      orbitRadius: 160, // Larger orbit radius
+      duration: 3.5 + Math.random() * 2, // 3.5-5.5 seconds
+      startAngle: (i / count) * 2 * Math.PI + Math.random() * 0.5,
+      tiltX: 65 + Math.random() * 15, // 65-80 degrees
+      rotationZ: (i / count) * 180 + Math.random() * 30, // Spread evenly with some randomness
+      color: electronColors[i % electronColors.length],
+    });
+  }
+  return orbits;
+}
+
+// Atom model with nucleus (profile) and orbiting electrons with trails
 function AtomModel({ children }: { children: React.ReactNode }) {
-  // 3 orbits like in the reference image - tilted ellipses rotated around Z
-  // Each orbit is tilted ~70° from horizontal and rotated to different angles
-  const orbits = [
-    { orbitRadius: 160, duration: 4, startAngle: 0, tiltX: 70, rotationZ: -30, color: "#1a1a1a" },
-    { orbitRadius: 160, duration: 5, startAngle: Math.PI * 0.66, tiltX: 70, rotationZ: 30, color: "#1a1a1a" },
-    { orbitRadius: 160, duration: 4.5, startAngle: Math.PI * 1.33, tiltX: 70, rotationZ: 90, color: "#1a1a1a" },
-  ];
+  const [resetKey, setResetKey] = useState(0);
+  const [orbits, setOrbits] = useState(() => generateOrbits(3));
+
+  const handleClick = () => {
+    const newCount = Math.floor(Math.random() * 6) + 2; // 2-7 electrons
+    setOrbits(generateOrbits(newCount));
+    setResetKey((k) => k + 1);
+  };
 
   return (
-    <div className="relative w-[420px] h-[420px] mx-auto flex items-center justify-center">
-      {/* Back orbit paths (behind nucleus) */}
-      <svg
-        className="absolute inset-0 w-full h-full"
-        style={{ zIndex: 1 }}
-        viewBox="0 0 400 400"
-      >
-        {orbits.map((orbit, index) => (
-          <OrbitPath
-            key={`back-${index}`}
-            orbitRadius={orbit.orbitRadius}
-            tiltX={orbit.tiltX}
-            rotationZ={orbit.rotationZ}
-            color={orbit.color}
-            isFront={false}
-          />
-        ))}
-      </svg>
-
-      {/* Electrons */}
+    <div
+      className="relative w-[370px] h-[370px] mx-auto flex items-center justify-center cursor-pointer"
+      onClick={handleClick}
+      title="Click to randomize electrons"
+    >
+      {/* Electrons with trails */}
       {orbits.map((orbit, index) => (
-        <Electron key={`electron-${index}`} {...orbit} />
+        <ElectronWithTrail
+          key={`electron-${index}-${resetKey}`}
+          {...orbit}
+          resetKey={resetKey}
+        />
       ))}
 
       {/* Nucleus glow effect */}
       <motion.div
-        className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full"
+        className="absolute w-40 h-40 sm:w-44 sm:h-44 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(96,108,56,0.12) 0%, rgba(96,108,56,0) 70%)",
+            "radial-gradient(circle, rgba(96,108,56,0.15) 0%, rgba(96,108,56,0) 70%)",
           zIndex: 10,
         }}
         animate={{
@@ -212,27 +246,12 @@ function AtomModel({ children }: { children: React.ReactNode }) {
       />
 
       {/* Nucleus (Profile image) */}
-      <div className="relative w-40 h-40 sm:w-48 sm:h-48" style={{ zIndex: 15 }}>
+      <div
+        className="relative w-36 h-36 sm:w-40 sm:h-40"
+        style={{ zIndex: 15 }}
+      >
         {children}
       </div>
-
-      {/* Front orbit paths (in front of nucleus) */}
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        style={{ zIndex: 20 }}
-        viewBox="0 0 400 400"
-      >
-        {orbits.map((orbit, index) => (
-          <OrbitPath
-            key={`front-${index}`}
-            orbitRadius={orbit.orbitRadius}
-            tiltX={orbit.tiltX}
-            rotationZ={orbit.rotationZ}
-            color={orbit.color}
-            isFront={true}
-          />
-        ))}
-      </svg>
     </div>
   );
 }
@@ -267,7 +286,7 @@ export default function Hero() {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="mb-8"
+          className="mb-2"
         >
           <AtomModel>
             {/* Profile image - the nucleus */}

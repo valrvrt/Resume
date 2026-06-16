@@ -12,24 +12,23 @@ const hobbyColors = ["bg-copperwood", "bg-olive-leaf", "bg-sunlit-clay", "bg-bla
 function HobbyCard({
   hobby,
   index,
+  isVisible,
 }: {
   hobby: {
     readonly title: string;
     readonly description: string;
   };
   index: number;
+  isVisible: boolean;
 }) {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-50px" });
   const Icon = hobbyIcons[index % hobbyIcons.length];
   const color = hobbyColors[index % hobbyColors.length];
 
   return (
     <motion.div
-      ref={ref}
       initial={{ opacity: 0, scale: 0.9, y: 20 }}
       animate={
-        isInView
+        isVisible
           ? { opacity: 1, scale: 1, y: 0 }
           : { opacity: 0, scale: 0.9, y: 20 }
       }
@@ -73,7 +72,7 @@ export default function Hobbies() {
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {t.hobbies.items.map((hobby, index) => (
-            <HobbyCard key={hobby.title} hobby={hobby} index={index} />
+            <HobbyCard key={hobby.title} hobby={hobby} index={index} isVisible={isInView} />
           ))}
         </div>
       </div>

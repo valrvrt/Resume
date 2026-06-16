@@ -58,14 +58,12 @@ function generateOrbits(count: number): OrbitConfig[] {
   return orbits;
 }
 
-const TRAIL_LENGTH = 50;
+// Keep trail short — just enough to look smooth without excess draw calls
+const TRAIL_LENGTH = 22;
 const CANVAS_SIZE = 370;
 
-type TrailPoint = { x: number; y: number; z: number; age: number };
+type TrailPoint = { x: number; y: number; z: number };
 
-// Renders the atom on two stacked canvases (back + front) so electrons
-// properly pass behind and in front of the nucleus without any React
-// re-renders during animation — all drawing goes straight to canvas.
 function AtomModel({ children }: { children: React.ReactNode }) {
   const backCanvasRef = useRef<HTMLCanvasElement>(null);
   const frontCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -75,20 +73,17 @@ function AtomModel({ children }: { children: React.ReactNode }) {
   const animIdRef = useRef<number>(0);
   const [orbits, setOrbits] = useState<OrbitConfig[]>(() => generateOrbits(3));
 
-  // Sync new orbits into refs so the running animation loop picks them up
   useEffect(() => {
     orbitsRef.current = orbits;
     startTimeRef.current = null;
     trailsRef.current = orbits.map(() => []);
   }, [orbits]);
 
-  // Single animation loop — runs for the lifetime of the component
   useEffect(() => {
     const backCanvas = backCanvasRef.current;
     const frontCanvas = frontCanvasRef.current;
     if (!backCanvas || !frontCanvas) return;
 
-    // Scale canvas for high-DPI screens so it looks sharp on phones
     const dpr = window.devicePixelRatio || 1;
     [backCanvas, frontCanvas].forEach((c) => {
       c.width = CANVAS_SIZE * dpr;
@@ -128,61 +123,73 @@ function AtomModel({ children }: { children: React.ReactNode }) {
           orbit.rotationZ,
         );
 
-        // Advance trail
+        // Update trail (no age tracking — gradient handles the fade)
         if (!trailsRef.current[i]) trailsRef.current[i] = [];
         const trail = trailsRef.current[i];
-        trail.unshift({ ...pos, age: 0 });
-        for (let j = 1; j < trail.length; j++) trail[j].age++;
+        trail.unshift(pos);
         if (trail.length > TRAIL_LENGTH) trail.pop();
 
         const isBehind = pos.z < 0;
         const scale =
           0.8 + ((pos.z + orbit.orbitRadius) / (orbit.orbitRadius * 2)) * 0.4;
+        const ctx = isBehind ? backCtx : frontCtx;
 
-        // Draw trail segments onto the correct canvas layer
-        for (let j = 0; j < trail.length - 1; j++) {
-          const p1 = trail[j];
-          const p2 = trail[j + 1];
-          const segBehind = (p1.z + p2.z) / 2 < 0;
-          const ctx = segBehind ? backCtx : frontCtx;
-          const avgAge = (p1.age + p2.age) / 2;
-          const fade = Math.max(0, 1 - avgAge / TRAIL_LENGTH);
-          const opacity = (segBehind ? 0.35 : 0.9) * fade * fade;
-          if (opacity < 0.02) continue;
+        // Draw entire trail as ONE gradient stroke (vs ~30 individual strokes).
+        // shadowBlur is intentionally avoided — it's a software blur and kills
+        // mobile performance. The glow below uses cheap concentric circles instead.
+        if (trail.length >= 2) {
+          const head = trail[0];
+          const tail = trail[trail.length - 1];
+          const dx = tail.x - head.x;
+          const dy = tail.y - head.y;
 
-          ctx.beginPath();
-          ctx.moveTo(cx + p1.x, cy + p1.y);
-          ctx.lineTo(cx + p2.x, cy + p2.y);
-          ctx.strokeStyle = orbit.color;
-          ctx.globalAlpha = opacity;
-          ctx.lineWidth = Math.max(0.5, 4 * fade);
-          ctx.stroke();
+          if (dx * dx + dy * dy > 1) {
+            const grad = ctx.createLinearGradient(
+              cx + head.x,
+              cy + head.y,
+              cx + tail.x,
+              cy + tail.y,
+            );
+            grad.addColorStop(0, orbit.color);
+            grad.addColorStop(1, orbit.color + "00"); // hex alpha: transparent
+
+            ctx.globalAlpha = isBehind ? 0.35 : 0.88;
+            ctx.beginPath();
+            ctx.moveTo(cx + trail[0].x, cy + trail[0].y);
+            for (let j = 1; j < trail.length; j++) {
+              ctx.lineTo(cx + trail[j].x, cy + trail[j].y);
+            }
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
         }
 
-        // Draw electron dot with glow
-        const eCtx = isBehind ? backCtx : frontCtx;
-        eCtx.globalAlpha = 1;
-        eCtx.shadowBlur = 12 * scale;
-        eCtx.shadowColor = orbit.color;
-        eCtx.beginPath();
-        eCtx.arc(cx + pos.x, cy + pos.y, 6 * scale, 0, Math.PI * 2);
-        eCtx.fillStyle = orbit.color;
-        eCtx.fill();
-        eCtx.shadowBlur = 0;
-      });
+        // Electron: outer soft halo + solid core (cheap glow, no shadowBlur)
+        ctx.globalAlpha = 0.22;
+        ctx.beginPath();
+        ctx.arc(cx + pos.x, cy + pos.y, 11 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = orbit.color;
+        ctx.fill();
 
-      backCtx.globalAlpha = 1;
-      frontCtx.globalAlpha = 1;
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(cx + pos.x, cy + pos.y, 6 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = orbit.color;
+        ctx.fill();
+      });
 
       animIdRef.current = requestAnimationFrame(draw);
     }
 
     animIdRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animIdRef.current);
-  }, []); // intentionally empty — loop runs once and reads from refs
+  }, []);
 
   const handleClick = () => {
-    const newCount = Math.floor(Math.random() * 6) + 2;
+    // Cap at 4 electrons — more than that is imperceptible and costs perf
+    const newCount = Math.floor(Math.random() * 3) + 2;
     setOrbits(generateOrbits(newCount));
   };
 
@@ -198,14 +205,12 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         Click to randomize
       </motion.div>
 
-      {/* Electrons behind the nucleus */}
       <canvas
         ref={backCanvasRef}
         className="absolute inset-0 pointer-events-none"
         style={{ zIndex: 3 }}
       />
 
-      {/* Nucleus glow */}
       <motion.div
         className="absolute w-40 h-40 sm:w-44 sm:h-44 rounded-full"
         style={{
@@ -217,12 +222,13 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* Nucleus (profile image) */}
-      <div className="relative w-36 h-36 sm:w-40 sm:h-40" style={{ zIndex: 15 }}>
+      <div
+        className="relative w-36 h-36 sm:w-40 sm:h-40"
+        style={{ zIndex: 15 }}
+      >
         {children}
       </div>
 
-      {/* Electrons in front of the nucleus */}
       <canvas
         ref={frontCanvasRef}
         className="absolute inset-0 pointer-events-none"
@@ -241,7 +247,6 @@ export default function Hero() {
       id="home"
       className="min-h-screen flex items-center justify-center relative overflow-hidden pb-20"
     >
-      {/* Background decoration - floating blobs */}
       <div className="absolute inset-0 overflow-hidden">
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
@@ -295,7 +300,6 @@ export default function Hero() {
           className="mb-2"
         >
           <AtomModel>
-            {/* Profile image - the nucleus */}
             <div className="w-full h-full rounded-full overflow-hidden border-4 border-olive-leaf shadow-xl bg-olive-leaf">
               {!imageError ? (
                 <Image
@@ -344,7 +348,6 @@ export default function Hero() {
           <span>{t.hero.location}</span>
         </motion.div>
 
-        {/* Social links */}
         <motion.div
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -369,7 +372,6 @@ export default function Hero() {
           </a>
         </motion.div>
 
-        {/* CTA Buttons */}
         <motion.div
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -384,7 +386,6 @@ export default function Hero() {
           </HoverButton>
         </motion.div>
 
-        {/* Scroll indicator */}
         <motion.a
           href="#about"
           initial={{ opacity: 0 }}

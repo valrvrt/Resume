@@ -83,11 +83,12 @@ function ProjectCard({
       initial={{ opacity: 0, y: 30 }}
       animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
       transition={{ duration: 0.5, delay: index * 0.05 }}
-      className="bg-cornsilk rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col"
+      whileHover={{ y: -4 }}
+      className="bg-cornsilk rounded-xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col group"
     >
       {/* Header */}
       <div className="flex items-start gap-4 mb-4">
-        <div className="p-3 bg-olive-leaf/10 rounded-lg shrink-0">
+        <div className="p-3 bg-olive-leaf/10 rounded-lg shrink-0 group-hover:bg-olive-leaf/20 group-hover:scale-110 transition-all duration-300">
           <Icon size={24} className="text-olive-leaf" />
         </div>
         <div className="flex-1 min-w-0">

@@ -213,10 +213,17 @@ function AtomModel({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="relative w-[370px] h-[370px] mx-auto flex items-center justify-center cursor-pointer"
+      className="relative w-[370px] h-[370px] mx-auto flex items-center justify-center cursor-pointer group"
       onClick={handleClick}
-      title="Click to randomize electrons"
     >
+      {/* Click hint - appears on hover */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-black-forest/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap z-30"
+      >
+        Click to randomize
+      </motion.div>
+
       {/* Electrons with trails */}
       {orbits.map((orbit, index) => (
         <ElectronWithTrail
@@ -265,18 +272,38 @@ export default function Hero() {
       id="home"
       className="min-h-screen flex items-center justify-center relative overflow-hidden pb-20"
     >
-      {/* Background decoration */}
+      {/* Background decoration - floating blobs */}
       <div className="absolute inset-0 overflow-hidden">
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1.5, ease: "easeOut" }}
+          animate={{
+            scale: 1,
+            opacity: 0.1,
+            x: [0, 30, -20, 0],
+            y: [0, -20, 30, 0],
+          }}
+          transition={{
+            scale: { duration: 1.5, ease: "easeOut" },
+            opacity: { duration: 1.5, ease: "easeOut" },
+            x: { duration: 20, repeat: Infinity, ease: "easeInOut" },
+            y: { duration: 25, repeat: Infinity, ease: "easeInOut" },
+          }}
           className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-olive-leaf rounded-full blur-3xl"
         />
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1.5, ease: "easeOut", delay: 0.2 }}
+          animate={{
+            scale: 1,
+            opacity: 0.1,
+            x: [0, -25, 35, 0],
+            y: [0, 25, -15, 0],
+          }}
+          transition={{
+            scale: { duration: 1.5, ease: "easeOut", delay: 0.2 },
+            opacity: { duration: 1.5, ease: "easeOut", delay: 0.2 },
+            x: { duration: 22, repeat: Infinity, ease: "easeInOut", delay: 0.2 },
+            y: { duration: 18, repeat: Infinity, ease: "easeInOut", delay: 0.2 },
+          }}
           className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-sunlit-clay rounded-full blur-3xl"
         />
       </div>
@@ -378,12 +405,12 @@ export default function Hero() {
           </HoverButton>
         </motion.div>
 
-        {/* Scroll indicator */}
+        {/* Scroll indicator - fades out after 5 seconds */}
         <motion.a
           href="#about"
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.8 }}
+          animate={{ opacity: [0, 1, 1, 1, 1, 0] }}
+          transition={{ duration: 6, delay: 0.8, times: [0, 0.1, 0.5, 0.7, 0.85, 1] }}
           className="inline-block cursor-pointer"
           aria-label="Scroll to About section"
         >

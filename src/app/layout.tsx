@@ -41,6 +41,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} antialiased`}>
       <body className="min-h-screen flex flex-col bg-cornsilk text-black-forest font-sans">
+        {/* Skip to content link for accessibility */}
+        <a
+          href="#home"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-olive-leaf focus:text-cornsilk focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-copperwood"
+        >
+          Skip to main content
+        </a>
         <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>

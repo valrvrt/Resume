@@ -110,3 +110,9 @@ body {
 .animate-hover-glow {
   animation: hover-glow 1.2s ease-out forwards;
 }
+
+/* Electron orbit — runs on compositor thread, zero JS cost */
+@keyframes orbit {
+  from { offset-distance: 0%; }
+  to   { offset-distance: 100%; }
+}

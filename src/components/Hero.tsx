@@ -4,26 +4,9 @@ import { motion } from "framer-motion";
 import { ChevronDown, Mail, User, MapPin } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa6";
 import Image from "next/image";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { HoverButton } from "@/components/ui/hover-button";
 import { useLanguage } from "@/context/LanguageContext";
-
-function calculate3DPosition(
-  angle: number,
-  orbitRadius: number,
-  tiltX: number,
-  rotationZ: number,
-) {
-  const flatX = orbitRadius * Math.cos(angle);
-  const flatY = orbitRadius * Math.sin(angle);
-  const tiltXRad = (tiltX * Math.PI) / 180;
-  const tiltedY = flatY * Math.cos(tiltXRad);
-  const tiltedZ = flatY * Math.sin(tiltXRad);
-  const rotZRad = (rotationZ * Math.PI) / 180;
-  const finalX = flatX * Math.cos(rotZRad) - tiltedY * Math.sin(rotZRad);
-  const finalY = flatX * Math.sin(rotZRad) + tiltedY * Math.cos(rotZRad);
-  return { x: finalX, y: finalY, z: tiltedZ };
-}
 
 const electronColors = [
   "#bc6c25",
@@ -58,139 +41,34 @@ function generateOrbits(count: number): OrbitConfig[] {
   return orbits;
 }
 
-// Keep trail short — just enough to look smooth without excess draw calls
-const TRAIL_LENGTH = 22;
-const CANVAS_SIZE = 370;
-
-type TrailPoint = { x: number; y: number; z: number };
+// Returns the SVG/CSS path string for an ellipse that matches the 3D orbit
+// projection.  A circle of radius r tilted by tiltX degrees around the X axis
+// appears as an ellipse: major axis = r, minor axis = r * cos(tiltX).
+// The whole ellipse is then rotated by rotationZ degrees.
+function orbitPath(orbit: OrbitConfig, cx = 185, cy = 185): string {
+  const { orbitRadius: rx, tiltX, rotationZ } = orbit;
+  const ry = rx * Math.abs(Math.cos((tiltX * Math.PI) / 180));
+  const rotRad = (rotationZ * Math.PI) / 180;
+  // Start point of the path (angle = 0 in the unrotated ellipse)
+  const x1 = (cx + rx * Math.cos(rotRad)).toFixed(2);
+  const y1 = (cy + rx * Math.sin(rotRad)).toFixed(2);
+  // Opposite end (angle = π)
+  const x2 = (cx - rx * Math.cos(rotRad)).toFixed(2);
+  const y2 = (cy - rx * Math.sin(rotRad)).toFixed(2);
+  const ryF = ry.toFixed(2);
+  // Two arcs completing the ellipse
+  return (
+    `M ${x1} ${y1} ` +
+    `A ${rx} ${ryF} ${rotationZ} 0 1 ${x2} ${y2} ` +
+    `A ${rx} ${ryF} ${rotationZ} 0 1 ${x1} ${y1}`
+  );
+}
 
 function AtomModel({ children }: { children: React.ReactNode }) {
-  const backCanvasRef = useRef<HTMLCanvasElement>(null);
-  const frontCanvasRef = useRef<HTMLCanvasElement>(null);
-  const orbitsRef = useRef<OrbitConfig[]>([]);
-  const startTimeRef = useRef<number | null>(null);
-  const trailsRef = useRef<TrailPoint[][]>([]);
-  const animIdRef = useRef<number>(0);
   const [orbits, setOrbits] = useState<OrbitConfig[]>(() => generateOrbits(3));
 
-  useEffect(() => {
-    orbitsRef.current = orbits;
-    startTimeRef.current = null;
-    trailsRef.current = orbits.map(() => []);
-  }, [orbits]);
-
-  useEffect(() => {
-    const backCanvas = backCanvasRef.current;
-    const frontCanvas = frontCanvasRef.current;
-    if (!backCanvas || !frontCanvas) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    [backCanvas, frontCanvas].forEach((c) => {
-      c.width = CANVAS_SIZE * dpr;
-      c.height = CANVAS_SIZE * dpr;
-      c.style.width = `${CANVAS_SIZE}px`;
-      c.style.height = `${CANVAS_SIZE}px`;
-    });
-
-    const backCtx = backCanvas.getContext("2d")!;
-    const frontCtx = frontCanvas.getContext("2d")!;
-    backCtx.scale(dpr, dpr);
-    frontCtx.scale(dpr, dpr);
-    backCtx.lineCap = "round";
-    frontCtx.lineCap = "round";
-
-    const cx = CANVAS_SIZE / 2;
-    const cy = CANVAS_SIZE / 2;
-
-    function draw(time: number) {
-      if (startTimeRef.current === null) {
-        startTimeRef.current = time;
-        trailsRef.current = orbitsRef.current.map(() => []);
-      }
-
-      const elapsed = time - startTimeRef.current;
-
-      backCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-      frontCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-      orbitsRef.current.forEach((orbit, i) => {
-        const angularSpeed = (2 * Math.PI) / (orbit.duration * 1000);
-        const angle = orbit.startAngle + elapsed * angularSpeed;
-        const pos = calculate3DPosition(
-          angle,
-          orbit.orbitRadius,
-          orbit.tiltX,
-          orbit.rotationZ,
-        );
-
-        // Update trail (no age tracking — gradient handles the fade)
-        if (!trailsRef.current[i]) trailsRef.current[i] = [];
-        const trail = trailsRef.current[i];
-        trail.unshift(pos);
-        if (trail.length > TRAIL_LENGTH) trail.pop();
-
-        const isBehind = pos.z < 0;
-        const scale =
-          0.8 + ((pos.z + orbit.orbitRadius) / (orbit.orbitRadius * 2)) * 0.4;
-        const ctx = isBehind ? backCtx : frontCtx;
-
-        // Draw entire trail as ONE gradient stroke (vs ~30 individual strokes).
-        // shadowBlur is intentionally avoided — it's a software blur and kills
-        // mobile performance. The glow below uses cheap concentric circles instead.
-        if (trail.length >= 2) {
-          const head = trail[0];
-          const tail = trail[trail.length - 1];
-          const dx = tail.x - head.x;
-          const dy = tail.y - head.y;
-
-          if (dx * dx + dy * dy > 1) {
-            const grad = ctx.createLinearGradient(
-              cx + head.x,
-              cy + head.y,
-              cx + tail.x,
-              cy + tail.y,
-            );
-            grad.addColorStop(0, orbit.color);
-            grad.addColorStop(1, orbit.color + "00"); // hex alpha: transparent
-
-            ctx.globalAlpha = isBehind ? 0.35 : 0.88;
-            ctx.beginPath();
-            ctx.moveTo(cx + trail[0].x, cy + trail[0].y);
-            for (let j = 1; j < trail.length; j++) {
-              ctx.lineTo(cx + trail[j].x, cy + trail[j].y);
-            }
-            ctx.strokeStyle = grad;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-          }
-        }
-
-        // Electron: outer soft halo + solid core (cheap glow, no shadowBlur)
-        ctx.globalAlpha = 0.22;
-        ctx.beginPath();
-        ctx.arc(cx + pos.x, cy + pos.y, 11 * scale, 0, Math.PI * 2);
-        ctx.fillStyle = orbit.color;
-        ctx.fill();
-
-        ctx.globalAlpha = 1;
-        ctx.beginPath();
-        ctx.arc(cx + pos.x, cy + pos.y, 6 * scale, 0, Math.PI * 2);
-        ctx.fillStyle = orbit.color;
-        ctx.fill();
-      });
-
-      animIdRef.current = requestAnimationFrame(draw);
-    }
-
-    animIdRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animIdRef.current);
-  }, []);
-
   const handleClick = () => {
-    // Cap at 4 electrons — more than that is imperceptible and costs perf
-    const newCount = Math.floor(Math.random() * 3) + 2;
-    setOrbits(generateOrbits(newCount));
+    setOrbits(generateOrbits(Math.floor(Math.random() * 3) + 2));
   };
 
   return (
@@ -205,12 +83,34 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         Click to randomize
       </motion.div>
 
-      <canvas
-        ref={backCanvasRef}
-        className="absolute inset-0 pointer-events-none"
+      {/* Static orbit rings — pure SVG, no animation cost */}
+      <svg
+        viewBox="0 0 370 370"
+        className="absolute inset-0 w-full h-full pointer-events-none"
         style={{ zIndex: 3 }}
-      />
+      >
+        {orbits.map((orbit, i) => {
+          const ry =
+            orbit.orbitRadius *
+            Math.abs(Math.cos((orbit.tiltX * Math.PI) / 180));
+          return (
+            <ellipse
+              key={i}
+              cx={185}
+              cy={185}
+              rx={orbit.orbitRadius}
+              ry={ry}
+              fill="none"
+              stroke={orbit.color}
+              strokeWidth={1.5}
+              strokeOpacity={0.25}
+              transform={`rotate(${orbit.rotationZ} 185 185)`}
+            />
+          );
+        })}
+      </svg>
 
+      {/* Nucleus glow */}
       <motion.div
         className="absolute w-40 h-40 sm:w-44 sm:h-44 rounded-full"
         style={{
@@ -222,6 +122,7 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
       />
 
+      {/* Nucleus (profile image) */}
       <div
         className="relative w-36 h-36 sm:w-40 sm:h-40"
         style={{ zIndex: 15 }}
@@ -229,11 +130,38 @@ function AtomModel({ children }: { children: React.ReactNode }) {
         {children}
       </div>
 
-      <canvas
-        ref={frontCanvasRef}
-        className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 23 }}
-      />
+      {/* Electrons — CSS offset-path animation, compositor-thread only */}
+      {orbits.map((orbit, i) => {
+        const path = orbitPath(orbit);
+        // Negative delay offsets the start position to match startAngle
+        const delay = -(orbit.startAngle / (2 * Math.PI)) * orbit.duration;
+        return (
+          <div
+            key={`${i}-${orbit.rotationZ}`}
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 20 }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                backgroundColor: orbit.color,
+                // Cheap CSS glow — GPU composited, unlike canvas shadowBlur
+                boxShadow: `0 0 6px 3px ${orbit.color}66`,
+                // Motion path — browser moves this along the ellipse natively
+                offsetPath: `path("${path}")`,
+                animationName: "orbit",
+                animationDuration: `${orbit.duration}s`,
+                animationTimingFunction: "linear",
+                animationIterationCount: "infinite",
+                animationDelay: `${delay}s`,
+              }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

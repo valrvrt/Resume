@@ -1,12 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ChevronDown, Mail, User, MapPin } from "lucide-react";
 import { FaLinkedin, FaGithub } from "react-icons/fa6";
 import Image from "next/image";
 import { useState, useId } from "react";
 import { HoverButton } from "@/components/ui/hover-button";
 import { useLanguage } from "@/context/LanguageContext";
+import { motion } from "framer-motion";
 
 // ---------------------------------------------------------------------------
 // Atom model — 100 % SVG, zero JS per frame.
@@ -189,49 +189,15 @@ export default function Hero() {
       id="home"
       className="min-h-screen flex items-center justify-center relative overflow-hidden pb-20"
     >
-      <div className="absolute inset-0 overflow-hidden">
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{
-            scale: 1,
-            opacity: 0.1,
-            x: [0, 30, -20, 0],
-            y: [0, -20, 30, 0],
-          }}
-          transition={{
-            scale: { duration: 1.5, ease: "easeOut" },
-            opacity: { duration: 1.5, ease: "easeOut" },
-            x: { duration: 20, repeat: Infinity, ease: "easeInOut" },
-            y: { duration: 25, repeat: Infinity, ease: "easeInOut" },
-          }}
-          className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-olive-leaf rounded-full blur-3xl"
-        />
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{
-            scale: 1,
-            opacity: 0.1,
-            x: [0, -25, 35, 0],
-            y: [0, 25, -15, 0],
-          }}
-          transition={{
-            scale: { duration: 1.5, ease: "easeOut", delay: 0.2 },
-            opacity: { duration: 1.5, ease: "easeOut", delay: 0.2 },
-            x: {
-              duration: 22,
-              repeat: Infinity,
-              ease: "easeInOut",
-              delay: 0.2,
-            },
-            y: {
-              duration: 18,
-              repeat: Infinity,
-              ease: "easeInOut",
-              delay: 0.2,
-            },
-          }}
-          className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 bg-sunlit-clay rounded-full blur-3xl"
-        />
+      {/*
+        Background blobs — pure CSS animations, zero JS per frame.
+        The blur filter sits on a static .hero-blob-blur wrapper so the
+        browser can cache the blur texture. The blobs animate transform
+        only (compositor thread) inside that wrapper.
+      */}
+      <div className="hero-blob-blur" aria-hidden="true">
+        <div className="hero-blob hero-blob-1" />
+        <div className="hero-blob hero-blob-2" />
       </div>
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -337,26 +303,14 @@ export default function Hero() {
           </HoverButton>
         </motion.div>
 
-        <motion.a
+        {/* Scroll chevron — pure CSS animations, no JS */}
+        <a
           href="#about"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: [0, 1, 1, 1, 1, 0] }}
-          transition={{
-            duration: 6,
-            delay: 0.8,
-            times: [0, 0.1, 0.5, 0.7, 0.85, 1],
-          }}
-          className="inline-block cursor-pointer"
+          className="inline-block cursor-pointer hero-chevron"
           aria-label="Scroll to About section"
         >
-          <motion.div
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-            className="text-olive-leaf"
-          >
-            <ChevronDown size={32} />
-          </motion.div>
-        </motion.a>
+          <ChevronDown size={32} />
+        </a>
       </div>
     </section>
   );

@@ -187,7 +187,7 @@ export default function Hero() {
   return (
     <section
       id="home"
-      className="min-h-screen flex items-center justify-center relative overflow-hidden pb-20"
+      className="min-h-screen flex items-center justify-center relative overflow-hidden pb-20 pt-16"
     >
       {/*
         Background blobs — pure CSS animations, zero JS per frame.

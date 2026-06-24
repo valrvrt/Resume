@@ -26,7 +26,7 @@ export default function Footer() {
   }[] = [
     {
       icon: FaGithub,
-      href: "https://github.com/valentinrevert",
+      href: "https://github.com/valrvrt",
       label: "GitHub",
     },
     {

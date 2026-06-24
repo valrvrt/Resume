@@ -1,11 +1,13 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useInView } from "framer-motion";
 import { useRef, useState } from "react";
-import { Mail, MapPin, Phone, Send } from "lucide-react";
+import { Mail, MapPin, Phone, Send, CheckCircle, XCircle } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa6";
 import { useLanguage } from "@/context/LanguageContext";
+
+type ToastStatus = "success" | "error" | null;
 
 export default function Contact() {
   const ref = useRef(null);
@@ -16,20 +18,63 @@ export default function Contact() {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toast, setToast] = useState<ToastStatus>(null);
   const { t } = useLanguage();
+
+  const showToast = (status: ToastStatus) => {
+    setToast(status);
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Simulate form submission
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    alert(t.contact.form.success);
-    setFormState({ name: "", email: "", message: "" });
-    setIsSubmitting(false);
+
+    try {
+      // Open mailto as primary delivery mechanism (works without a backend)
+      const subject = encodeURIComponent(
+        `Portfolio contact from ${formState.name}`
+      );
+      const body = encodeURIComponent(
+        `Name: ${formState.name}\nEmail: ${formState.email}\n\n${formState.message}`
+      );
+      window.location.href = `mailto:valentinrevert@gmail.com?subject=${subject}&body=${body}`;
+
+      setFormState({ name: "", email: "", message: "" });
+      showToast("success");
+    } catch {
+      showToast("error");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <section id="contact" className="py-20 bg-muted/50">
+      {/* Toast notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className={`fixed top-20 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-6 py-3 rounded-xl shadow-xl text-cornsilk font-medium ${
+              toast === "success" ? "bg-olive-leaf" : "bg-copperwood"
+            }`}
+          >
+            {toast === "success" ? (
+              <CheckCircle size={20} />
+            ) : (
+              <XCircle size={20} />
+            )}
+            {toast === "success"
+              ? t.contact.form.success
+              : t.contact.form.error ?? "Something went wrong. Please try again."}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           ref={ref}
@@ -113,7 +158,7 @@ export default function Contact() {
               </h4>
               <div className="flex gap-4">
                 <a
-                  href="https://github.com/valentinrevert"
+                  href="https://github.com/valrvrt"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-3 bg-black-forest text-cornsilk rounded-lg hover:bg-olive-leaf transition-colors duration-200 cursor-pointer"

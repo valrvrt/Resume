@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/context/LanguageContext";
+import LangSync from "@/components/LangSync";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,6 +31,16 @@ export const metadata: Metadata = {
       "Nuclear engineer specializing in neutronics and thermohydraulic modeling for next-generation reactors.",
     type: "website",
     locale: "en_US",
+    url: "https://valrvrt.github.io/Resume",
+  },
+  twitter: {
+    card: "summary",
+    title: "Valentin Revert | Nuclear Engineer",
+    description:
+      "Nuclear engineer specializing in neutronics and thermohydraulic modeling for next-generation reactors.",
+  },
+  alternates: {
+    canonical: "https://valrvrt.github.io/Resume",
   },
 };
 
@@ -48,7 +59,11 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          {/* Keeps <html lang> in sync with the selected language client-side */}
+          <LangSync />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

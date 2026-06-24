@@ -2,13 +2,21 @@
 
 import { motion } from "framer-motion";
 import { ChevronDown, Mail, User, MapPin } from "lucide-react";
-import { FaLinkedin } from "react-icons/fa6";
+import { FaLinkedin, FaGithub } from "react-icons/fa6";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useId } from "react";
 import { HoverButton } from "@/components/ui/hover-button";
 import { useLanguage } from "@/context/LanguageContext";
 
-const electronColors = [
+// ---------------------------------------------------------------------------
+// Atom model — 100 % SVG, zero JS per frame.
+// Each electron is an SVG circle driven by <animateMotion> which the browser
+// runs on the compositor thread (same as CSS transform/opacity).
+// No box-shadow (forces paint), no CSS offset-path (patchy mobile support),
+// no Framer Motion inside the atom — just declarative SVG.
+// ---------------------------------------------------------------------------
+
+const ELECTRON_COLORS = [
   "#bc6c25",
   "#dda15e",
   "#a35d2b",
@@ -17,151 +25,157 @@ const electronColors = [
   "#188157",
 ];
 
+const CX = 185; // SVG viewport centre
+const CY = 185;
+const R  = 160; // orbit radius
+
 interface OrbitConfig {
-  orbitRadius: number;
-  duration: number;
-  startAngle: number;
-  tiltX: number;
-  rotationZ: number;
+  tiltX: number;    // degrees — how "flat" the ellipse looks
+  rotationZ: number; // degrees — in-plane rotation of the ellipse
+  duration: number;  // seconds for one full revolution
+  startOffset: number; // 0–1, fractional start position along path
   color: string;
 }
 
-function generateOrbits(count: number): OrbitConfig[] {
-  const orbits: OrbitConfig[] = [];
-  for (let i = 0; i < count; i++) {
-    orbits.push({
-      orbitRadius: 160,
-      duration: 3.5 + Math.random() * 2,
-      startAngle: (i / count) * 2 * Math.PI + Math.random() * 0.5,
-      tiltX: 65 + Math.random() * 15,
-      rotationZ: (i / count) * 180 + Math.random() * 30,
-      color: electronColors[i % electronColors.length],
-    });
-  }
-  return orbits;
+function randomOrbits(count: number): OrbitConfig[] {
+  return Array.from({ length: count }, (_, i) => ({
+    tiltX: 55 + Math.random() * 20,
+    rotationZ: (i / count) * 180 + Math.random() * 30,
+    duration: 3.5 + Math.random() * 2,
+    startOffset: (i / count) + Math.random() * 0.2,
+    color: ELECTRON_COLORS[i % ELECTRON_COLORS.length],
+  }));
 }
 
-// Returns the SVG/CSS path string for an ellipse that matches the 3D orbit
-// projection.  A circle of radius r tilted by tiltX degrees around the X axis
-// appears as an ellipse: major axis = r, minor axis = r * cos(tiltX).
-// The whole ellipse is then rotated by rotationZ degrees.
-function orbitPath(orbit: OrbitConfig, cx = 185, cy = 185): string {
-  const { orbitRadius: rx, tiltX, rotationZ } = orbit;
-  const ry = rx * Math.abs(Math.cos((tiltX * Math.PI) / 180));
+// Build an SVG ellipse path string (two arcs) for <animateMotion mpath>.
+function ellipsePath(tiltX: number, rotationZ: number): string {
+  const rx = R;
+  const ry = R * Math.abs(Math.cos((tiltX * Math.PI) / 180));
   const rotRad = (rotationZ * Math.PI) / 180;
-  // Start point of the path (angle = 0 in the unrotated ellipse)
-  const x1 = (cx + rx * Math.cos(rotRad)).toFixed(2);
-  const y1 = (cy + rx * Math.sin(rotRad)).toFixed(2);
-  // Opposite end (angle = π)
-  const x2 = (cx - rx * Math.cos(rotRad)).toFixed(2);
-  const y2 = (cy - rx * Math.sin(rotRad)).toFixed(2);
-  const ryF = ry.toFixed(2);
-  // Two arcs completing the ellipse
+  const x1 = (CX + rx * Math.cos(rotRad)).toFixed(3);
+  const y1 = (CY + rx * Math.sin(rotRad)).toFixed(3);
+  const x2 = (CX - rx * Math.cos(rotRad)).toFixed(3);
+  const y2 = (CY - rx * Math.sin(rotRad)).toFixed(3);
+  const ryS = ry.toFixed(3);
   return (
     `M ${x1} ${y1} ` +
-    `A ${rx} ${ryF} ${rotationZ} 0 1 ${x2} ${y2} ` +
-    `A ${rx} ${ryF} ${rotationZ} 0 1 ${x1} ${y1}`
+    `A ${rx} ${ryS} ${rotationZ} 0 1 ${x2} ${y2} ` +
+    `A ${rx} ${ryS} ${rotationZ} 0 1 ${x1} ${y1}`
   );
 }
 
 function AtomModel({ children }: { children: React.ReactNode }) {
-  const [orbits, setOrbits] = useState<OrbitConfig[]>(() => generateOrbits(3));
+  const [orbits, setOrbits] = useState<OrbitConfig[]>(() => randomOrbits(3));
+  const uid = useId().replace(/:/g, ""); // stable, SSR-safe ID prefix
 
   const handleClick = () => {
-    setOrbits(generateOrbits(Math.floor(Math.random() * 3) + 2));
+    setOrbits(randomOrbits(Math.floor(Math.random() * 3) + 2));
   };
 
   return (
     <div
       className="relative w-[370px] h-[370px] mx-auto flex items-center justify-center cursor-pointer group"
       onClick={handleClick}
+      role="img"
+      aria-label="Interactive atom model — click to randomize orbits"
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-black-forest/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap z-30"
-      >
+      {/* "Click to randomize" hint */}
+      <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-black-forest/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap z-30 pointer-events-none select-none">
         Click to randomize
-      </motion.div>
+      </div>
 
-      {/* Static orbit rings — pure SVG, no animation cost */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Single SVG — orbit rings + electrons + nucleus glow, all in one     */}
+      {/* paint layer. The browser composites the whole thing as one texture. */}
+      {/* ------------------------------------------------------------------ */}
       <svg
         viewBox="0 0 370 370"
-        className="absolute inset-0 w-full h-full pointer-events-none"
+        className="atom-svg absolute inset-0 w-full h-full pointer-events-none"
+        aria-hidden="true"
         style={{ zIndex: 3 }}
       >
+        <defs>
+          {/* Soft radial glow filter — replaces box-shadow (no repaint) */}
+          {orbits.map((orbit, i) => (
+            <filter key={i} id={`${uid}-glow-${i}`} x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          ))}
+
+          {/* Nucleus pulse — CSS keyframe on an SVG circle, compositor only */}
+          <style>{`
+            @keyframes nucleus-pulse {
+              0%, 100% { r: 58px; opacity: 0.18; }
+              50%       { r: 64px; opacity: 0.32; }
+            }
+            .nucleus-glow { animation: nucleus-pulse 3s ease-in-out infinite; }
+            @media (prefers-reduced-motion: reduce) {
+              .nucleus-glow { animation: none; }
+              animateMotion { display: none; }
+            }
+          `}</style>
+        </defs>
+
+        {/* Nucleus glow ring — pure CSS animation on SVG, no JS */}
+        <circle
+          className="nucleus-glow"
+          cx={CX}
+          cy={CY}
+          r={58}
+          fill="rgba(96,108,56,0.18)"
+        />
+
         {orbits.map((orbit, i) => {
-          const ry =
-            orbit.orbitRadius *
-            Math.abs(Math.cos((orbit.tiltX * Math.PI) / 180));
+          const ry = R * Math.abs(Math.cos((orbit.tiltX * Math.PI) / 180));
+          const path = ellipsePath(orbit.tiltX, orbit.rotationZ);
+          const pathId = `${uid}-path-${i}`;
+          // Convert fractional start offset to "keyPoints / keyTimes" trick:
+          // We use calcMode="linear" begin at a negative time offset instead.
+          const beginDelay = -(orbit.startOffset * orbit.duration).toFixed(3) + "s";
+
           return (
-            <ellipse
-              key={i}
-              cx={185}
-              cy={185}
-              rx={orbit.orbitRadius}
-              ry={ry}
-              fill="none"
-              stroke={orbit.color}
-              strokeWidth={1.5}
-              strokeOpacity={0.25}
-              transform={`rotate(${orbit.rotationZ} 185 185)`}
-            />
+            <g key={`${i}-${orbit.rotationZ}`}>
+              {/* Orbit ring */}
+              <ellipse
+                cx={CX}
+                cy={CY}
+                rx={R}
+                ry={ry}
+                fill="none"
+                stroke={orbit.color}
+                strokeWidth={1.2}
+                strokeOpacity={0.22}
+                transform={`rotate(${orbit.rotationZ} ${CX} ${CY})`}
+              />
+
+              {/* Path for animateMotion — invisible */}
+              <path id={pathId} d={path} fill="none" stroke="none" />
+
+              {/* Electron dot */}
+              <circle r={6} fill={orbit.color} filter={`url(#${uid}-glow-${i})`}>
+                <animateMotion
+                  dur={`${orbit.duration}s`}
+                  repeatCount="indefinite"
+                  begin={beginDelay}
+                  calcMode="linear"
+                  rotate="none"
+                >
+                  <mpath href={`#${pathId}`} />
+                </animateMotion>
+              </circle>
+            </g>
           );
         })}
       </svg>
 
-      {/* Nucleus glow */}
-      <motion.div
-        className="absolute w-40 h-40 sm:w-44 sm:h-44 rounded-full"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(96,108,56,0.15) 0%, rgba(96,108,56,0) 70%)",
-          zIndex: 10,
-        }}
-        animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-      />
-
-      {/* Nucleus (profile image) */}
-      <div
-        className="relative w-36 h-36 sm:w-40 sm:h-40"
-        style={{ zIndex: 15 }}
-      >
+      {/* Profile image sits on top, centred */}
+      <div className="relative w-36 h-36 sm:w-40 sm:h-40" style={{ zIndex: 15 }}>
         {children}
       </div>
-
-      {/* Electrons — CSS offset-path animation, compositor-thread only */}
-      {orbits.map((orbit, i) => {
-        const path = orbitPath(orbit);
-        // Negative delay offsets the start position to match startAngle
-        const delay = -(orbit.startAngle / (2 * Math.PI)) * orbit.duration;
-        return (
-          <div
-            key={`${i}-${orbit.rotationZ}`}
-            className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 20 }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                width: 12,
-                height: 12,
-                borderRadius: "50%",
-                backgroundColor: orbit.color,
-                // Cheap CSS glow — GPU composited, unlike canvas shadowBlur
-                boxShadow: `0 0 6px 3px ${orbit.color}66`,
-                // Motion path — browser moves this along the ellipse natively
-                offsetPath: `path("${path}")`,
-                animationName: "orbit",
-                animationDuration: `${orbit.duration}s`,
-                animationTimingFunction: "linear",
-                animationIterationCount: "infinite",
-                animationDelay: `${delay}s`,
-              }}
-            />
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -280,7 +294,7 @@ export default function Hero() {
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="flex items-center justify-center gap-6 mb-10"
+          className="flex items-center justify-center gap-4 mb-10"
         >
           <a
             href="https://www.linkedin.com/in/valentin-revert-734420226/"
@@ -290,6 +304,15 @@ export default function Hero() {
             aria-label="LinkedIn Profile"
           >
             <FaLinkedin size={24} />
+          </a>
+          <a
+            href="https://github.com/valrvrt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-3 bg-olive-leaf text-cornsilk rounded-full hover:bg-black-forest transition-colors duration-200 cursor-pointer"
+            aria-label="GitHub Profile"
+          >
+            <FaGithub size={24} />
           </a>
           <a
             href="mailto:valentinrevert@gmail.com"

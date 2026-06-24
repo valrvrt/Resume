@@ -59,7 +59,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
 
 /* Selection styling */
@@ -111,8 +111,8 @@ body {
   animation: hover-glow 1.2s ease-out forwards;
 }
 
-/* Electron orbit — runs on compositor thread, zero JS cost */
-@keyframes orbit {
-  from { offset-distance: 0%; }
-  to   { offset-distance: 100%; }
+/* Atom SVG — hint to the browser to promote to its own compositor layer */
+.atom-svg {
+  will-change: transform;
+  contain: strict;
 }

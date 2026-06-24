@@ -287,8 +287,8 @@ export const translations = {
         messagePlaceholder: "Your message...",
         send: "Send Message",
         sending: "Sending...",
-        success:
-          "Message sent! (This is a demo - connect your backend for real submissions)",
+        success: "Your email client has opened — just hit send!",
+        error: "Something went wrong. Please email me directly at valentinrevert@gmail.com",
       },
     },
 
@@ -591,8 +591,8 @@ export const translations = {
         messagePlaceholder: "Votre message...",
         send: "Envoyer",
         sending: "Envoi en cours...",
-        success:
-          "Message envoyé ! (Ceci est une démo - connectez votre backend pour de vraies soumissions)",
+        success: "Votre client mail s'est ouvert — il ne reste plus qu'à envoyer !",
+        error: "Une erreur s'est produite. Écrivez-moi directement à valentinrevert@gmail.com",
       },
     },
 
